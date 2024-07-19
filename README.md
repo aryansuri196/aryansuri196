@@ -1,4 +1,4 @@
-- 👋 Hi, I’m lucifer
+- 👋 Hi, I’m Aryan
 - 👀 I’m interested in devastation
 - 🌱 I’m currently learning  skills
 - 📫 How to reach me  no way 
