@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moisture Meter</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Rajdhani',sans-serif;display:flex;align-items:center;justify-content:center;}
+canvas{position:absolute;top:0;left:0;}
+
+.ui{position:relative;z-index:5;display:flex;flex-direction:column;align-items:center;gap:1.5rem;padding:2rem 1rem;}
+
+.title{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:300;color:rgba(180,220,255,.9);letter-spacing:.5em;text-align:center;}
+
+.ring-wrap{position:relative;width:min(360px,88vw);height:min(360px,88vw);}
+#speedoC{position:absolute;inset:0;width:100%;height:100%;}
+.ring-info{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.1rem;pointer-events:none;}
+.info-lbl{font-size:.62rem;letter-spacing:.5em;color:rgba(180,220,255,.4);text-transform:uppercase;}
+.info-num{font-family:'Rajdhani',sans-serif;font-size:clamp(2.8rem,8vw,5rem);font-weight:300;color:#fff;line-height:1;transition:color .5s;}
+.info-unit{font-size:.7rem;letter-spacing:.4em;color:rgba(180,220,255,.38);}
+
+.stats{display:flex;gap:2.5rem;}
+.stat{display:flex;flex-direction:column;align-items:center;gap:.12rem;}
+.stat-val{font-size:1.05rem;font-weight:600;color:#fff;}
+.stat-lbl{font-size:.62rem;letter-spacing:.3em;color:rgba(180,220,255,.38);}
+
+.btn-row{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;}
+.btn{padding:.65rem 1.5rem;border-radius:30px;border:1px solid rgba(100,180,255,.3);background:rgba(0,20,60,.4);backdrop-filter:blur(12px);color:rgba(180,220,255,.85);font-family:'Rajdhani',sans-serif;font-size:.88rem;letter-spacing:.22em;cursor:pointer;transition:all .28s;}
+.btn:hover{background:rgba(0,60,120,.5);border-color:rgba(100,180,255,.55);}
+.btn.active{background:rgba(0,80,160,.5);border-color:rgba(100,180,255,.8);}
+</style>
+</head>
+<body>
+
+<canvas id="bgC"></canvas>
+
+<div class="ui">
+  <div class="title">MOISTURE SENSOR</div>
+
+  <div class="ring-wrap">
+    <canvas id="speedoC"></canvas>
+    <div class="ring-info">
+      <div class="info-lbl">SOIL MOISTURE</div>
+      <div class="info-num" id="numDisplay">—</div>
+      <div class="info-unit">PERCENT</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-val" id="statPot">POT I</div><div class="stat-lbl">POT</div></div>
+    <div class="stat"><div class="stat-val" id="statStatus">–</div><div class="stat-lbl">STATUS</div></div>
+    <div class="stat"><div class="stat-val" id="statTime">–</div><div class="stat-lbl">UPDATED</div></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" onclick="runDemo(25)">DRY (25%)</button>
+    <button class="btn" onclick="runDemo(55)">OK (55%)</button>
+    <button class="btn" onclick="runDemo(78)">GOOD (78%)</button>
+    <button class="btn" onclick="runDemo(92)">WET (92%)</button>
+    <button class="btn" onclick="fetchAndAnimate()">LIVE SENSOR</button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let W=innerWidth,H=innerHeight;
+const RAF=requestAnimationFrame;
+
+// ── RESIZE ──
+function resize(){
+  W=innerWidth;H=innerHeight;
+  const bg=$('bgC');bg.width=W;bg.height=H;
+  const sc=$('speedoC'),sz=Math.min(W*.88,360);
+  sc.width=sz;sc.height=sz;
+  drawSpeedo(lastVal);
+}
+window.addEventListener('resize',resize);
+
+// ── STARFIELD BG ──
+const bgC=$('bgC'),bgCtx=bgC.getContext('2d');
+const stars=Array.from({length:260},()=>({
+  x:Math.random(),y:Math.random(),
+  r:Math.random()*1.6+.2,
+  ph:Math.random()*Math.PI*2,
+  sp:Math.random()*.018+.004
+}));
+
+function animBg(){
+  bgCtx.clearRect(0,0,W,H);
+  const g=bgCtx.createRadialGradient(W/2,H/2,40,W/2,H/2,W*.9);
+  g.addColorStop(0,'#06001a');
+  g.addColorStop(.5,'#02000e');
+  g.addColorStop(1,'#000');
+  bgCtx.fillStyle=g;bgCtx.fillRect(0,0,W,H);
+  stars.forEach(s=>{
+    s.ph+=s.sp;
+    const a=.15+.55*Math.abs(Math.sin(s.ph));
+    bgCtx.beginPath();bgCtx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+    bgCtx.fillStyle=`rgba(180,210,255,${a})`;bgCtx.fill();
+  });
+  RAF(animBg);
+}
+animBg();
+
+// ── SPEEDO DRAW ──
+const sc=$('speedoC');
+const sCtx=sc.getContext('2d');
+let lastVal=0;
+
+function drawSpeedo(val){
+  lastVal=val;
+  const sw=sc.width,sh=sc.height;
+  const cx=sw/2,cy=sh/2,r=sw*.43;
+  sCtx.clearRect(0,0,sw,sh);
+
+  const SA=-Math.PI*1.22, EA=Math.PI*.22;
+
+  // ── Outer chrome bezel ──
+  const chrome=sCtx.createLinearGradient(cx-r,cy,cx+r,cy);
+  chrome.addColorStop(0,'rgba(80,140,200,.2)');
+  chrome.addColorStop(.35,'rgba(180,230,255,.55)');
+  chrome.addColorStop(.65,'rgba(180,230,255,.55)');
+  chrome.addColorStop(1,'rgba(80,140,200,.2)');
+  sCtx.beginPath();sCtx.arc(cx,cy,r+9,0,Math.PI*2);
+  sCtx.strokeStyle=chrome;sCtx.lineWidth=7;sCtx.stroke();
+
+  // Second thin chrome ring
+  sCtx.beginPath();sCtx.arc(cx,cy,r+2,0,Math.PI*2);
+  sCtx.strokeStyle='rgba(100,160,220,.3)';sCtx.lineWidth=1.5;sCtx.stroke();
+
+  // ── Deep glass face ──
+  const face=sCtx.createRadialGradient(cx,cy-r*.1,r*.05,cx,cy,r);
+  face.addColorStop(0,'rgba(8,20,55,.97)');
+  face.addColorStop(.6,'rgba(3,10,30,.98)');
+  face.addColorStop(1,'rgba(0,4,18,1)');
+  sCtx.beginPath();sCtx.arc(cx,cy,r,0,Math.PI*2);
+  sCtx.fillStyle=face;sCtx.fill();
+
+  // ── Track arc ──
+  sCtx.beginPath();sCtx.arc(cx,cy,r*.84,SA,EA);
+  sCtx.strokeStyle='rgba(30,65,130,.55)';
+  sCtx.lineWidth=sw*.058;sCtx.lineCap='butt';sCtx.stroke();
+
+  // ── Colored fill arc ──
+  if(val>0){
+    const aEnd=SA+(val/100)*(EA-SA);
+    const ag=sCtx.createLinearGradient(cx-r,cy,cx+r,cy);
+    if(val<25){
+      ag.addColorStop(0,'#0055ff');ag.addColorStop(1,'#00bbff');
+    } else if(val<50){
+      ag.addColorStop(0,'#00aaff');ag.addColorStop(.5,'#00ddaa');ag.addColorStop(1,'#00cc55');
+    } else if(val<75){
+      ag.addColorStop(0,'#00cc55');ag.addColorStop(1,'#aadd00');
+    } else {
+      ag.addColorStop(0,'#aadd00');ag.addColorStop(.5,'#ffcc00');ag.addColorStop(1,'#ff4422');
+    }
+    sCtx.beginPath();sCtx.arc(cx,cy,r*.84,SA,aEnd);
+    sCtx.strokeStyle=ag;sCtx.lineWidth=sw*.058;sCtx.lineCap='round';sCtx.stroke();
+
+    // Glowing tip
+    const tipA=aEnd;
+    const tx=cx+Math.cos(tipA)*r*.84, ty=cy+Math.sin(tipA)*r*.84;
+    const glow=sCtx.createRadialGradient(tx,ty,0,tx,ty,sw*.07);
+    glow.addColorStop(0,'rgba(120,255,210,.55)');glow.addColorStop(1,'transparent');
+    sCtx.fillStyle=glow;sCtx.beginPath();sCtx.arc(tx,ty,sw*.07,0,Math.PI*2);sCtx.fill();
+  }
+
+  // ── Tick marks & labels ──
+  for(let v=0;v<=100;v+=5){
+    const a=SA+(v/100)*(EA-SA);
+    const isMaj=v%10===0;
+    const r1=r*(isMaj?.755:.775), r2=r*.73;
+    sCtx.beginPath();
+    sCtx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);
+    sCtx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);
+    sCtx.strokeStyle=isMaj?'rgba(210,235,255,.92)':'rgba(90,140,200,.42)';
+    sCtx.lineWidth=isMaj?2.2:1;sCtx.stroke();
+
+    if(isMaj){
+      const lr=r*.625;
+      sCtx.save();
+      sCtx.font=`600 ${sw*.031}px Rajdhani,sans-serif`;
+      sCtx.fillStyle='rgba(180,220,255,.78)';
+      sCtx.textAlign='center';sCtx.textBaseline='middle';
+      sCtx.fillText(v, cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
+      sCtx.restore();
+    }
+  }
+
+  // ── Needle ──
+  const nA=SA+(val/100)*(EA-SA);
+  sCtx.save();sCtx.translate(cx,cy);sCtx.rotate(nA);
+
+  // Needle shadow
+  sCtx.save();sCtx.translate(3,3);
+  sCtx.fillStyle='rgba(0,0,0,.4)';
+  sCtx.beginPath();sCtx.moveTo(-3,r*.12);sCtx.lineTo(0,-r*.82);sCtx.lineTo(3,r*.12);sCtx.closePath();sCtx.fill();
+  sCtx.restore();
+
+  // Needle body
+  const ng=sCtx.createLinearGradient(0,-r*.82,0,r*.12);
+  ng.addColorStop(0,'rgba(255,255,255,1)');
+  ng.addColorStop(.65,'rgba(180,220,255,.95)');
+  ng.addColorStop(1,'rgba(60,100,200,0)');
+  sCtx.fillStyle=ng;
+  sCtx.beginPath();sCtx.moveTo(-3,r*.12);sCtx.lineTo(0,-r*.82);sCtx.lineTo(3,r*.12);sCtx.closePath();sCtx.fill();
+
+  // Needle spine glow
+  sCtx.shadowColor='rgba(180,220,255,.9)';sCtx.shadowBlur=18;
+  sCtx.strokeStyle='rgba(220,240,255,.55)';sCtx.lineWidth=1;
+  sCtx.beginPath();sCtx.moveTo(0,-r*.82);sCtx.lineTo(0,r*.1);sCtx.stroke();
+  sCtx.restore();
+
+  // ── Center jewel (4 layers) ──
+  const jewel=[
+    [15,'rgba(240,250,255,1)','rgba(200,230,255,.6)'],
+    [11,'rgba(120,190,255,1)','rgba(50,130,230,.85)'],
+    [7, 'rgba(30,90,210,1)', 'rgba(8,35,150,.95)'],
+    [3, 'rgba(200,230,255,1)','rgba(80,140,220,.6)'],
+  ];
+  jewel.forEach(([cr,c1,c2])=>{
+    const jg=sCtx.createRadialGradient(cx-cr*.35,cy-cr*.35,0,cx,cy,cr);
+    jg.addColorStop(0,c1);jg.addColorStop(1,c2);
+    sCtx.beginPath();sCtx.arc(cx,cy,cr,0,Math.PI*2);sCtx.fillStyle=jg;sCtx.fill();
+  });
+
+  // ── Glass dome reflection ──
+  const glass=sCtx.createRadialGradient(cx-r*.28,cy-r*.32,5,cx,cy,r);
+  glass.addColorStop(0,'rgba(255,255,255,.07)');
+  glass.addColorStop(.45,'rgba(255,255,255,.02)');
+  glass.addColorStop(1,'rgba(0,0,0,0)');
+  sCtx.beginPath();sCtx.arc(cx,cy,r,0,Math.PI*2);sCtx.fillStyle=glass;sCtx.fill();
+
+  // ── Zone labels ──
+  const zones=[
+    {a:SA+(0/100)*(EA-SA),label:'DRY',col:'rgba(100,170,255,.55)'},
+    {a:SA+(50/100)*(EA-SA),label:'OK',col:'rgba(80,220,160,.55)'},
+    {a:SA+(85/100)*(EA-SA),label:'WET',col:'rgba(255,180,60,.55)'},
+  ];
+  zones.forEach(z=>{
+    const zr=r*.52;
+    sCtx.save();
+    sCtx.font=`500 ${sw*.028}px Rajdhani,sans-serif`;
+    sCtx.fillStyle=z.col;sCtx.textAlign='center';sCtx.textBaseline='middle';
+    sCtx.fillText(z.label,cx+Math.cos(z.a)*zr,cy+Math.sin(z.a)*zr);
+    sCtx.restore();
+  });
+}
+
+// ── ANIMATION ──
+function animateTo(targetVal, onDone){
+  let frame=0;
+  // Phase 1: sweep to 100, phase 2: back to 0, phase 3: to real value
+  function tick(){
+    frame++;
+    let tv;
+    if(frame<=55)       tv=(frame/55)*100;
+    else if(frame<=90)  tv=100-((frame-55)/35)*100;
+    else                tv=((frame-90)/60)*targetVal;
+    tv=Math.max(0,Math.min(100,tv));
+
+    drawSpeedo(tv);
+    $('numDisplay').textContent=Math.round(tv);
+
+    if(frame<150){
+      RAF(tick);
+    } else {
+      drawSpeedo(targetVal);
+      $('numDisplay').textContent=targetVal;
+      const col=targetVal<30?'#60a5fa':targetVal<50?'#facc15':targetVal<75?'#4ade80':'#fb923c';
+      $('numDisplay').style.color=col;
+      $('statStatus').textContent=targetVal<30?'DRY':targetVal<50?'LOW':targetVal<70?'OK':targetVal<85?'GOOD':'WET';
+      $('statTime').textContent=new Date().toLocaleTimeString();
+      if(onDone)onDone();
+    }
+  }
+  RAF(tick);
+}
+
+function runDemo(val){
+  $('numDisplay').style.color='#fff';
+  $('numDisplay').textContent='—';
+  $('statStatus').textContent='–';
+  animateTo(val);
+}
+
+async function fetchAndAnimate(){
+  $('numDisplay').style.color='#fff';
+  $('numDisplay').textContent='–';
+  $('statStatus').textContent='FETCHING…';
+  let val=68; // fallback
+  try{
+    const r=await fetch('/api/moisture?pot=0',{signal:AbortSignal.timeout(3000)});
+    if(r.ok){const j=await r.json();if(typeof j.moisture==='number')val=j.moisture;}
+  }catch(e){}
+  animateTo(val);
+}
+
+// ── INIT ──
+resize();
+// Auto-run demo on load
+setTimeout(()=>runDemo(68),600);
+</script>
+</body>
+</html>
