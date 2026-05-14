@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flora — Loading</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Rajdhani',sans-serif;}
+canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+#rain-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+.rain-ui{position:relative;z-index:5;text-align:center;display:flex;flex-direction:column;align-items:center;pointer-events:none;}
+.rain-logo{font-family:'Cormorant Garamond',serif;font-size:clamp(4rem,10vw,9rem);font-weight:300;letter-spacing:.5em;color:#fff;text-shadow:0 0 80px rgba(200,180,255,.6),0 0 40px rgba(150,130,255,.4);opacity:0;animation:riseIn 2.5s 1s forwards;}
+.rain-sub{font-size:clamp(.7rem,2vw,1rem);letter-spacing:.6em;color:rgba(210,190,255,.6);opacity:0;animation:riseIn 2s 2.3s forwards;margin-top:.8rem;}
+.rain-tap{margin-top:3rem;font-size:.82rem;letter-spacing:.5em;color:rgba(255,255,255,.35);opacity:0;animation:riseIn .8s 4s forwards, breathe 2.5s 4s infinite; pointer-events: auto;}
+@keyframes riseIn{from{opacity:0;transform:translateY(35px);}to{opacity:1;transform:translateY(0);}}
+@keyframes breathe{0%,100%{opacity:.3;}50%{opacity:.85;}}
+</style>
+</head>
+<body>
+
+<div id="rain-screen">
+  <canvas id="rainBg"></canvas>
+  <canvas id="rainC"></canvas>
+  <canvas id="splashC"></canvas>
+  <div class="rain-ui">
+    <div class="rain-logo">FLORA</div>
+    <div class="rain-sub">PLANT INTELLIGENCE SYSTEM</div>
+    <div class="rain-tap">
+    <a href="firstpage.html"><button>
+        TAP ANYWHERE TO ENTER </button></a></div>
+    
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let W=innerWidth,H=innerHeight;
+const RAF=requestAnimationFrame;
+
+const rainBg=$('rainBg'),rbCtx=rainBg.getContext('2d');
+const rC=$('rainC'),rCtx=rC.getContext('2d');
+const spC=$('splashC'),spCtx=spC.getContext('2d');
+
+let rainDrops=[],splashes=[],rainT=0;
+
+function resize(){
+  W=innerWidth;H=innerHeight;
+  [rainBg,rC,spC].forEach(c=>{c.width=W;c.height=H;});
+  initRain();
+}
+window.addEventListener('resize',resize);
+
+function timePalette(){
+  const h=new Date().getHours()+new Date().getMinutes()/60;
+  if(h>=5&&h<7)  return{t:'DAWN',  s1:'#0d0825',s2:'#5a1a42',s3:'#d06040'};
+  if(h>=7&&h<11) return{t:'MORNING',s1:'#1a72b8',s2:'#4aaad4',s3:'#c0e0f8'};
+  if(h>=11&&h<16)return{t:'DAY',   s1:'#1660a0',s2:'#3888c8',s3:'#90c8f0'};
+  if(h>=16&&h<19)return{t:'EVE',   s1:'#1c4080',s2:'#7060a0',s3:'#e09060'};
+  if(h>=19&&h<21)return{t:'DUSK',  s1:'#100520',s2:'#601838',s3:'#d04820'};
+  return{t:'NIGHT',s1:'#020308',s2:'#050c18',s3:'#0a1828'};
+}
+
+function fillSky(ctx,pal){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,pal.s1);g.addColorStop(.55,pal.s2);g.addColorStop(1,pal.s3);
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(['NIGHT','DUSK','DAWN'].includes(pal.t)){
+    ctx.fillStyle='rgba(255,255,255,.75)';
+    for(let i=0;i<180;i++){
+      const sx=(Math.sin(i*137.508)*.5+.5)*W;
+      const sy=(Math.cos(i*97.31)*.5+.5)*H*.55;
+      ctx.beginPath();ctx.arc(sx,sy,Math.random()<.05?1.4:.5,0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+
+function initRain(){
+  rainDrops=[];
+  for(let i=0;i<600;i++){
+    rainDrops.push({
+      x:Math.random()*W*1.4-W*.2,
+      y:Math.random()*H,
+      speed:Math.random()*16+12,
+      len:Math.random()*40+22,
+      thick:Math.random()*1.4+.4,
+      opa:.25+Math.random()*.4
+    });
+  }
+}
+
+function rainLoop(){
+  const pal=timePalette();
+
+  // Sky background
+  rbCtx.clearRect(0,0,W,H);
+  fillSky(rbCtx,pal);
+  rbCtx.fillStyle='rgba(4,4,22,.5)';
+  rbCtx.fillRect(0,0,W,H);
+
+  // Mist layer
+  const mist=rbCtx.createLinearGradient(0,H*.6,0,H);
+  mist.addColorStop(0,'transparent');
+  mist.addColorStop(1,'rgba(80,100,160,.12)');
+  rbCtx.fillStyle=mist;
+  rbCtx.fillRect(0,H*.6,W,H*.4);
+
+  rainT++;
+
+  // Occasional lightning flash
+  if(Math.random()<.005){
+    rbCtx.fillStyle='rgba(200,180,255,.06)';
+    rbCtx.fillRect(0,0,W,H);
+  }
+
+  rCtx.clearRect(0,0,W,H);
+  spCtx.clearRect(0,0,W,H);
+
+  const wind=Math.sin(rainT*.015)*2.5;
+
+  // Rain drops
+  rainDrops.forEach(d=>{
+    rCtx.save();
+    rCtx.globalAlpha=d.opa;
+    const sg=rCtx.createLinearGradient(d.x,d.y,d.x-d.len*.2,d.y-d.len);
+    sg.addColorStop(0,'rgba(200,215,255,.95)');
+    sg.addColorStop(.5,'rgba(180,200,255,.4)');
+    sg.addColorStop(1,'rgba(160,185,255,0)');
+    rCtx.strokeStyle=sg;
+    rCtx.lineWidth=d.thick;
+    rCtx.lineCap='round';
+    rCtx.beginPath();
+    rCtx.moveTo(d.x,d.y);
+    rCtx.lineTo(d.x-d.len*.2,d.y-d.len);
+    rCtx.stroke();
+    rCtx.restore();
+
+    d.y+=d.speed;
+    d.x+=d.speed*.2+wind*.15;
+
+    if(d.y>H+10){
+      // Spawn splash
+      for(let si=0;si<6;si++){
+        splashes.push({
+          x:d.x%W,y:H-1,
+          vx:(Math.random()-.5)*5,
+          vy:-Math.random()*4-1.5,
+          life:0,ml:Math.random()*20+12,
+          r:Math.random()*2.5+.6,
+          ring:false
+        });
+      }
+      // Ripple ring
+      splashes.push({x:d.x%W,y:H-1,ring:true,r:0,life:0,ml:18,opa:.5});
+      d.y=-d.len-Math.random()*50;
+      d.x=Math.random()*W*1.4-W*.2;
+    }
+  });
+
+  // Splash particles
+  splashes.forEach(s=>{
+    spCtx.save();
+    if(s.ring){
+      const a=(1-s.life/s.ml)*s.opa;
+      spCtx.globalAlpha=a;
+      spCtx.strokeStyle='rgba(180,210,255,.7)';
+      spCtx.lineWidth=.9;
+      spCtx.beginPath();
+      spCtx.ellipse(s.x,s.y,s.r,s.r*.3,0,0,Math.PI*2);
+      spCtx.stroke();
+      s.r+=1.1;s.life++;
+    } else {
+      const a=(1-s.life/s.ml)*.75;
+      spCtx.globalAlpha=a;
+      spCtx.fillStyle='rgba(180,210,255,.85)';
+      spCtx.beginPath();
+      spCtx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      spCtx.fill();
+      s.x+=s.vx;s.y+=s.vy;s.vy+=.35;s.life++;
+    }
+    spCtx.restore();
+  });
+
+  splashes=splashes.filter(s=>s.life<s.ml);
+  RAF(rainLoop);
+}
+
+resize();
+rainLoop();
+</script>
+</body>
+</html>
